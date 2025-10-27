@@ -1,0 +1,12 @@
+services:
+  dataviz-server:
+    build: .
+    container_name: dataviz-mcp-server
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: false
+    restart: "no"
