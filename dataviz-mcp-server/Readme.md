@@ -13,14 +13,16 @@ DataViz Pro is a Python-based visualization MCP server that provides an alternat
 ## ✨ Features
 
 ### Data Source Support
+
 - **Local Files**: CSV, Excel (XLSX, XLS)
 - **Databases**: PostgreSQL, MySQL, SQL Server, MongoDB
-- **Cloud Storage**: 
+- **Cloud Storage**:
   - AWS S3
   - Google Cloud BigQuery
   - Azure Blob Storage
 
 ### Visualization Types
+
 - Bar Charts
 - Line Charts
 - Pie Charts
@@ -31,6 +33,7 @@ DataViz Pro is a Python-based visualization MCP server that provides an alternat
 - Multi-panel Dashboards
 
 ### Analysis Tools
+
 - Dataset preview and exploration
 - Statistical summary reports
 - Memory-efficient data caching
@@ -39,6 +42,7 @@ DataViz Pro is a Python-based visualization MCP server that provides an alternat
 ## 📦 Installation
 
 ### Prerequisites
+
 - Docker Desktop installed and running
 - Claude Desktop application
 - Windows/macOS/Linux
@@ -53,9 +57,10 @@ mkdir data outputs
 
 ### Step 2: Create Required Files
 
-Create the following 5 files in your project directory:
+Create the following 5 files in your project directory:*I*
 
 #### 1. `Dockerfile`
+
 ```dockerfile
 FROM python:3.11-slim
 
@@ -81,6 +86,7 @@ CMD ["python", "server.py"]
 ```
 
 #### 2. `requirements.txt`
+
 ```txt
 fastmcp
 pandas
@@ -104,9 +110,11 @@ kaleido
 ```
 
 #### 3. `server.py`
+
 See the complete server.py code in the installation package.
 
 #### 4. `compose.yaml`
+
 ```yaml
 services:
   dataviz-server:
@@ -131,11 +139,13 @@ docker compose build
 ### Step 4: Configure Claude Desktop
 
 #### On Windows:
+
 ```bash
 notepad %APPDATA%\Claude\claude_desktop_config.json
 ```
 
 #### On macOS:
+
 ```bash
 nano ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
@@ -143,6 +153,7 @@ nano ~/Library/Application\ Support/Claude/claude_desktop_config.json
 #### Configuration Content:
 
 **Windows:**
+
 ```json
 {
   "mcpServers": {
@@ -163,6 +174,7 @@ nano ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
 **macOS/Linux:**
+
 ```json
 {
   "mcpServers": {
@@ -239,6 +251,7 @@ List all loaded datasets and generate a summary report for the CSV dataset
 ## 📊 Available Tools
 
 ### Data Loading Tools
+
 1. **load_csv_file** - Load CSV files with custom delimiters
 2. **load_excel_file** - Load Excel files (with sheet selection)
 3. **connect_sql_database** - Connect to SQL databases (PostgreSQL, MySQL, SQL Server)
@@ -248,11 +261,13 @@ List all loaded datasets and generate a summary report for the CSV dataset
 7. **load_azure_blob** - Load files from Azure Blob Storage
 
 ### Dataset Management Tools
+
 8. **list_loaded_datasets** - View all datasets in memory
 9. **preview_dataset** - Preview dataset rows and statistics
 10. **generate_summary_report** - Comprehensive statistical analysis
 
 ### Visualization Tools
+
 11. **create_bar_chart** - Interactive bar charts
 12. **create_line_chart** - Time series and trend analysis
 13. **create_pie_chart** - Distribution visualization
@@ -284,27 +299,32 @@ dataviz-mcp-server/
 ### Data Access Paths
 
 When loading local files, use these path formats:
+
 - **Inside Docker**: `/app/data/yourfile.csv`
 - **Your Computer**: `./data/yourfile.csv` (files placed in the data folder)
 
 ### Database Connection Strings
 
 **PostgreSQL:**
+
 ```
 postgresql://username:password@host:5432/database
 ```
 
 **MySQL:**
+
 ```
 mysql+pymysql://username:password@host:3306/database
 ```
 
 **SQL Server:**
+
 ```
 mssql+pyodbc://username:password@host/database?driver=ODBC+Driver+17+for+SQL+Server
 ```
 
 **MongoDB:**
+
 ```
 mongodb://username:password@host:27017/
 ```
@@ -312,15 +332,18 @@ mongodb://username:password@host:27017/
 ### Cloud Storage Credentials
 
 **AWS S3:**
+
 - `aws_access_key`: Your AWS access key ID
 - `aws_secret_key`: Your AWS secret access key
 - `region`: AWS region (default: us-east-1)
 
 **Google BigQuery:**
+
 - `credentials_json`: Path to service account JSON file
 - `project_id`: GCP project ID
 
 **Azure Blob:**
+
 - `account_name`: Storage account name
 - `account_key`: Storage account key
 
@@ -329,28 +352,31 @@ mongodb://username:password@host:27017/
 ### Server Not Appearing in Claude Desktop
 
 1. **Check Docker is running:**
+
    ```bash
    docker ps
    ```
-
 2. **Verify configuration path:**
+
    - Ensure the path in `claude_desktop_config.json` is absolute
    - Use double backslashes `\\` on Windows
    - Use forward slashes `/` on macOS/Linux
-
 3. **Check Claude Desktop logs:**
+
    - Windows: `%APPDATA%\Claude\logs\`
    - macOS: `~/Library/Logs/Claude/`
-
 4. **Test server manually:**
+
    ```bash
    docker compose run --rm dataviz-server
    ```
+
    Should start without errors (press Ctrl+C to stop)
 
 ### "No configuration file provided: not found"
 
 This means Docker can't find `compose.yaml`. Solutions:
+
 - Use absolute path in `claude_desktop_config.json`
 - Verify file is named `compose.yaml` (not `docker-compose.yml`)
 - Ensure the `-f` flag points to the correct file
@@ -358,11 +384,12 @@ This means Docker can't find `compose.yaml`. Solutions:
 ### Output Files Not Accessible
 
 1. **Check volumes are mounted:**
+
    ```bash
    docker compose config
    ```
-
 2. **Verify folder permissions:**
+
    ```bash
    # Windows
    icacls outputs /grant Users:F
@@ -370,8 +397,8 @@ This means Docker can't find `compose.yaml`. Solutions:
    # macOS/Linux
    chmod 755 outputs
    ```
-
 3. **Check file was created:**
+
    ```bash
    ls outputs/
    ```
@@ -408,16 +435,17 @@ This means Docker can't find `compose.yaml`. Solutions:
 ## 📈 Performance Tips
 
 1. **Optimize data loading:**
+
    - Filter data at source when possible
    - Load only required columns
    - Use appropriate data types
-
 2. **Visualization performance:**
+
    - Limit data points in scatter plots (<10k points)
    - Aggregate data before visualization
    - Use appropriate chart types for data size
-
 3. **Memory management:**
+
    - Clear unused datasets periodically
    - Restart Claude Desktop to free memory
    - Monitor Docker container resources
@@ -433,6 +461,7 @@ docker compose build --no-cache
 ### Update Dependencies
 
 Edit `requirements.txt` and rebuild:
+
 ```bash
 docker compose build
 ```
@@ -495,7 +524,7 @@ This project is provided as-is for use with Claude Desktop.
 6. **Performance**: Monitor memory usage with large datasets
 
 ---
-  
-**Date:** October 27, 2025  
-**Version:** 1.0.0  
+
+**Date:** October 27, 2025
+**Version:** 1.0.0
 **MCP Protocol:** 2025-06-18
