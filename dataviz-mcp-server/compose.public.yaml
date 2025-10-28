@@ -1,6 +1,6 @@
 services:
   dataviz-server:
-    build: .
+    image: saitejamothukuri/dataviz-mcp-server:latest
     container_name: dataviz-mcp-server
     volumes:
       - ./data:/app/data

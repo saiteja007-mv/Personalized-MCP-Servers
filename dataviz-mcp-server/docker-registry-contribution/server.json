@@ -1,0 +1,33 @@
+{
+  "name": "dataviz",
+  "summary": "Interactive data visualization and analysis MCP server powered by Plotly, Pandas, and Matplotlib",
+  "description": "DataViz Pro is a comprehensive MCP server for creating professional visualizations, analyzing datasets, and generating interactive dashboards. Supports CSV, Excel, SQL databases, MongoDB, AWS S3, Google BigQuery, and Azure Blob Storage with automatic file path resolution for Windows/WSL/Linux environments.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "Saiteja Mothukuri",
+  "repository": "https://github.com/saiteja007-mv/dataviz-mcp-server",
+  "documentationUrl": "https://github.com/saiteja007-mv/dataviz-mcp-server/blob/main/Readme.md",
+  "type": "local",
+  "docker": {
+    "image": "saitejamothukuri/dataviz-mcp-server:latest",
+    "buildContext": ".",
+    "dockerfile": "Dockerfile"
+  },
+  "tags": [
+    "visualization",
+    "data-analysis",
+    "plotly",
+    "pandas",
+    "charts",
+    "dashboards",
+    "csv",
+    "excel",
+    "sql",
+    "mongodb",
+    "aws-s3",
+    "google-bigquery",
+    "azure-blob",
+    "analytics",
+    "reporting"
+  ]
+}

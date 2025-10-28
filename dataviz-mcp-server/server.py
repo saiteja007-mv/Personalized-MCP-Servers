@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from io import StringIO, BytesIO
 import base64
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,16 +24,122 @@ mcp = FastMCP("DataViz Pro")
 DATA_CACHE = {}
 
 @mcp.tool()
+def get_file_path_help():
+    """Get instructions on how to provide file paths to the DataViz server when using Cursor or other MCP clients."""
+    help_text = {
+        "overview": "The DataViz server runs in a Docker container and needs special handling for file paths from Cursor or other clients.",
+        "supported_path_formats": [
+            "Windows absolute paths: C:\\Users\\username\\data\\file.csv",
+            "WSL paths: /mnt/c/Users/username/data/file.csv",
+            "Linux/Unix paths: /home/user/data/file.csv",
+            "Container paths: /app/data/file.csv"
+        ],
+        "methods": {
+            "method_1_use_docker_volume": {
+                "description": "Mount your local directory to /app/data in the container (RECOMMENDED)",
+                "steps": [
+                    "1. Update your Cursor MCP config to mount volumes",
+                    "2. Modify ~/.cursor/mcp.json dataviz configuration",
+                    "3. Change the docker run command to include volume mounts"
+                ],
+                "example_config": {
+                    "dataviz": {
+                        "type": "stdio",
+                        "command": "docker",
+                        "args": [
+                            "run",
+                            "--rm",
+                            "-i",
+                            "-v",
+                            "C:\\Users\\username\\Documents\\data:/app/data",
+                            "saitejamothukuri/dataviz-mcp-server:latest"
+                        ]
+                    }
+                },
+                "then_use": "/app/data/file.csv in the MCP tool"
+            },
+            "method_2_automatic_path_resolution": {
+                "description": "The server automatically converts Windows paths to WSL/Linux format",
+                "how_it_works": "Pass your Windows path directly - the server will handle conversion",
+                "example": "C:\\Users\\username\\Documents\\data.csv will be converted to /mnt/c/Users/username/Documents/data.csv"
+            },
+            "method_3_use_wsl_paths": {
+                "description": "If using WSL, pass WSL-formatted paths directly",
+                "example": "/mnt/c/Users/username/Documents/data.csv"
+            }
+        },
+        "recommended_approach": "Use Method 1 (Docker volume mounting) for best performance and easier path handling"
+    }
+
+    logger.info("User requested file path help")
+    return json.dumps(help_text, indent=2)
+
+def resolve_file_path(file_path: str) -> tuple[bool, str]:
+    """
+    Resolve file path from Cursor or other clients.
+    Handles Windows paths passed to Docker container.
+    Returns (success: bool, resolved_path: str)
+    """
+    try:
+        # Original path
+        original_path = file_path.strip()
+        logger.info(f"Attempting to resolve path: {original_path}")
+
+        # Try as-is first (for Unix-like paths in container)
+        if os.path.exists(original_path):
+            logger.info(f"Found file at: {original_path}")
+            return True, original_path
+
+        # Convert Windows path to WSL path if needed
+        if '\\' in original_path or ':' in original_path:
+            # Windows path like C:\Users\... -> /mnt/c/Users/...
+            if len(original_path) > 1 and original_path[1] == ':':
+                drive_letter = original_path[0].lower()
+                rest_of_path = original_path[2:].replace('\\', '/')
+                wsl_path = f"/mnt/{drive_letter}{rest_of_path}"
+                logger.info(f"Converted Windows path to WSL: {wsl_path}")
+
+                if os.path.exists(wsl_path):
+                    logger.info(f"Found file at WSL path: {wsl_path}")
+                    return True, wsl_path
+
+        # Try with forward slashes
+        forward_slash_path = original_path.replace('\\', '/')
+        if os.path.exists(forward_slash_path):
+            logger.info(f"Found file with forward slashes: {forward_slash_path}")
+            return True, forward_slash_path
+
+        # List available directories for debugging
+        available_dirs = []
+        for root, dirs, files in os.walk('/'):
+            if len(available_dirs) < 5:  # Limit to first 5 for logging
+                available_dirs.extend([os.path.join(root, d) for d in dirs[:2]])
+
+        error_msg = f"File not found: {original_path}. Make sure to use absolute paths or copy files to /app/data directory in the container."
+        logger.error(error_msg)
+        return False, error_msg
+
+    except Exception as e:
+        error_msg = f"Error resolving path {file_path}: {str(e)}"
+        logger.error(error_msg)
+        return False, error_msg
+
+@mcp.tool()
 def load_csv_file(file_path: str = "", delimiter: str = ",", encoding: str = "utf-8"):
-    """Load a CSV file into memory for visualization. Returns dataset info including columns, row count, and sample data."""
+    """Load a CSV file into memory for visualization. Returns dataset info including columns, row count, and sample data. Accepts absolute file paths from Windows, WSL, or Linux."""
     try:
         if not file_path:
             return "Error: file_path parameter is required"
-        
-        df = pd.read_csv(file_path, delimiter=delimiter, encoding=encoding)
-        dataset_id = f"csv_{hash(file_path)}"
+
+        # Resolve the file path
+        success, resolved_path = resolve_file_path(file_path)
+        if not success:
+            return f"Error: {resolved_path}"
+
+        df = pd.read_csv(resolved_path, delimiter=delimiter, encoding=encoding)
+        dataset_id = f"csv_{hash(resolved_path)}"
         DATA_CACHE[dataset_id] = df
-        
+
         info = {
             "dataset_id": dataset_id,
             "rows": len(df),
@@ -40,8 +147,8 @@ def load_csv_file(file_path: str = "", delimiter: str = ",", encoding: str = "ut
             "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
             "sample": df.head(5).to_dict(orient='records')
         }
-        
-        logger.info(f"Loaded CSV: {file_path} with {len(df)} rows")
+
+        logger.info(f"Loaded CSV: {resolved_path} with {len(df)} rows")
         return json.dumps(info, indent=2)
     except Exception as e:
         logger.error(f"Error loading CSV: {str(e)}")
@@ -49,16 +156,21 @@ def load_csv_file(file_path: str = "", delimiter: str = ",", encoding: str = "ut
 
 @mcp.tool()
 def load_excel_file(file_path: str = "", sheet_name: str = ""):
-    """Load an Excel file into memory. If sheet_name is empty, loads the first sheet. Returns dataset info."""
+    """Load an Excel file into memory. If sheet_name is empty, loads the first sheet. Returns dataset info. Accepts absolute file paths from Windows, WSL, or Linux."""
     try:
         if not file_path:
             return "Error: file_path parameter is required"
-        
+
+        # Resolve the file path
+        success, resolved_path = resolve_file_path(file_path)
+        if not success:
+            return f"Error: {resolved_path}"
+
         sheet = sheet_name if sheet_name else 0
-        df = pd.read_excel(file_path, sheet_name=sheet)
-        dataset_id = f"excel_{hash(file_path + str(sheet))}"
+        df = pd.read_excel(resolved_path, sheet_name=sheet)
+        dataset_id = f"excel_{hash(resolved_path + str(sheet))}"
         DATA_CACHE[dataset_id] = df
-        
+
         info = {
             "dataset_id": dataset_id,
             "rows": len(df),
@@ -66,8 +178,8 @@ def load_excel_file(file_path: str = "", sheet_name: str = ""):
             "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
             "sample": df.head(5).to_dict(orient='records')
         }
-        
-        logger.info(f"Loaded Excel: {file_path}, sheet: {sheet}")
+
+        logger.info(f"Loaded Excel: {resolved_path}, sheet: {sheet}")
         return json.dumps(info, indent=2)
     except Exception as e:
         logger.error(f"Error loading Excel: {str(e)}")
