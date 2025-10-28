@@ -1,0 +1,19 @@
+{
+    "name": "weather-mcp-server",
+    "description": "Provides real-time and forecast weather updates using Open-Meteo API.",
+    "tools": [
+      {
+        "name": "get_weather_by_city",
+        "description": "Get current weather for a given city."
+      },
+      {
+        "name": "get_weather_by_coordinates",
+        "description": "Get detailed weather by latitude and longitude."
+      },
+      {
+        "name": "get_forecast",
+        "description": "Get a 5-day weather forecast for a city."
+      }
+    ]
+  }
+  

@@ -1,0 +1,473 @@
+{
+    "name": "LinkedIn & Twitter AI Content Automation",
+    "nodes": [
+      {
+        "parameters": {
+          "updates": [
+            "message"
+          ]
+        },
+        "id": "telegram-trigger-1",
+        "name": "Telegram Trigger",
+        "type": "n8n-nodes-base.telegramTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          240,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Extract message text and chat ID from Telegram\nconst messageText = $input.item.json.message.text;\nconst chatId = $input.item.json.message.chat.id;\nconst userId = $input.item.json.message.from.id;\nconst username = $input.item.json.message.from.username || $input.item.json.message.from.first_name;\n\nreturn {\n  json: {\n    originalMessage: messageText,\n    chatId: chatId,\n    userId: userId,\n    username: username,\n    timestamp: new Date().toISOString()\n  }\n};"
+        },
+        "id": "extract-message-1",
+        "name": "Extract Message Content",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          460,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "model": "gpt-4o",
+          "options": {
+            "temperature": 0.7
+          }
+        },
+        "id": "openai-chat-model-1",
+        "name": "OpenAI Chat Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1,
+        "position": [
+          680,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "endpointUrl": "http://localhost:3000/mcp",
+          "serverTransport": "httpStreamable",
+          "authentication": "none",
+          "include": "all"
+        },
+        "id": "mcp-github-tool-1",
+        "name": "MCP GitHub Tool",
+        "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+        "typeVersion": 1.2,
+        "position": [
+          680,
+          320
+        ],
+        "notesInFlow": true,
+        "notes": "Configure your MCP server endpoint here"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ `You are a professional social media content creator. Based on the following user request, create engaging LinkedIn and Twitter posts.\n\nUser Request: ${$json.originalMessage}\n\nInstructions:\n1. Create TWO versions of the post:\n   - LinkedIn Post (800-1300 characters, professional tone, use emojis sparingly, include relevant hashtags)\n   - Twitter Post (max 280 characters, concise, engaging, include 2-3 hashtags)\n\n2. For the topic mentioned, search for relevant GitHub repositories from the user's profile using the MCP tool to include authentic links and examples.\n\n3. Structure your response EXACTLY as JSON:\n{\n  \"linkedinPost\": \"Your LinkedIn post here\",\n  \"twitterPost\": \"Your Twitter post here\",\n  \"githubLinks\": [\"link1\", \"link2\"],\n  \"hashtags\": [\"#tag1\", \"#tag2\", \"#tag3\"]\n}\n\nMake the content engaging, informative, and shareable. Include a call-to-action when appropriate.` }}"
+        },
+        "id": "ai-agent-1",
+        "name": "AI Content Generator",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3,
+        "position": [
+          900,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Parse the AI response and structure the data\nconst aiResponse = $input.item.json.output;\nconst chatId = $input.item.json.chatId;\nconst originalMessage = $input.item.json.originalMessage;\n\n// Try to parse JSON from AI response\nlet parsedContent;\ntry {\n  // Extract JSON if it's wrapped in markdown code blocks\n  const jsonMatch = aiResponse.match(/```(?:json)?\\s*({[\\s\\S]*?})\\s*```/) || aiResponse.match(/({[\\s\\S]*})/);\n  if (jsonMatch) {\n    parsedContent = JSON.parse(jsonMatch[1]);\n  } else {\n    throw new Error('No JSON found');\n  }\n} catch (error) {\n  // Fallback if parsing fails\n  parsedContent = {\n    linkedinPost: aiResponse.substring(0, 1300),\n    twitterPost: aiResponse.substring(0, 280),\n    githubLinks: [],\n    hashtags: []\n  };\n}\n\nreturn {\n  json: {\n    chatId: chatId,\n    originalMessage: originalMessage,\n    linkedinPost: parsedContent.linkedinPost,\n    twitterPost: parsedContent.twitterPost,\n    githubLinks: parsedContent.githubLinks || [],\n    hashtags: parsedContent.hashtags || [],\n    status: 'pending_review',\n    createdAt: new Date().toISOString()\n  }\n};"
+        },
+        "id": "parse-ai-response-1",
+        "name": "Parse AI Response",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1120,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "resource": "message",
+          "operation": "sendMessage",
+          "chatId": "={{ $json.chatId }}",
+          "text": "={{ `🔍 Content Review Required\\n\\n📱 LinkedIn Post:\\n${$json.linkedinPost}\\n\\n🐦 Twitter Post:\\n${$json.twitterPost}\\n\\n🔗 GitHub Links: ${$json.githubLinks.join(', ')}\\n\\n✅ Reply 'APPROVE' to post\\n❌ Reply 'REJECT' to cancel` }}"
+        },
+        "id": "send-for-review-1",
+        "name": "Send for Review",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1340,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "updates": [
+            "callback_query",
+            "message"
+          ]
+        },
+        "id": "telegram-approval-trigger-1",
+        "name": "Wait for Approval",
+        "type": "n8n-nodes-base.telegramTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          240,
+          600
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Check if the response is an approval or rejection\nconst item = $input.item.json;\nlet decision = 'unknown';\nlet chatId;\n\n// Check if it's a callback query (button press)\nif (item.callback_query) {\n  decision = item.callback_query.data;\n  chatId = item.callback_query.message.chat.id;\n} \n// Check if it's a text message\nelse if (item.message && item.message.text) {\n  const text = item.message.text.toUpperCase();\n  if (text.includes('APPROVE') || text.includes('YES') || text.includes('OK')) {\n    decision = 'approve';\n  } else if (text.includes('REJECT') || text.includes('NO') || text.includes('CANCEL')) {\n    decision = 'reject';\n  }\n  chatId = item.message.chat.id;\n}\n\nreturn {\n  json: {\n    decision: decision,\n    chatId: chatId,\n    timestamp: new Date().toISOString()\n  }\n};"
+        },
+        "id": "check-approval-1",
+        "name": "Check Approval",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          460,
+          600
+        ]
+      },
+      {
+        "parameters": {
+          "rules": {
+            "rules": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.decision }}",
+                      "rightValue": "approve",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.decision }}",
+                      "rightValue": "reject",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "switch-decision-1",
+        "name": "Route Decision",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3,
+        "position": [
+          680,
+          600
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Store post data with unique execution ID\nconst executionId = $execution.id;\nconst workflowStaticData = this.getWorkflowStaticData('global');\n\n// Store the pending post data\nworkflowStaticData.pendingPost = {\n  executionId: executionId,\n  linkedinPost: $('Parse AI Response').first().json.linkedinPost,\n  twitterPost: $('Parse AI Response').first().json.twitterPost,\n  githubLinks: $('Parse AI Response').first().json.githubLinks,\n  hashtags: $('Parse AI Response').first().json.hashtags,\n  chatId: $json.chatId,\n  timestamp: new Date().toISOString()\n};\n\nreturn {\n  json: {\n    ...workflowStaticData.pendingPost,\n    approvedAt: new Date().toISOString()\n  }\n};"
+        },
+        "id": "get-pending-post-1",
+        "name": "Get Pending Post Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          900,
+          500
+        ],
+        "notesInFlow": true,
+        "notes": "Uses workflow static data for state management"
+      },
+      {
+        "parameters": {
+          "resource": "post",
+          "operation": "create",
+          "postAs": "person",
+          "text": "={{ $json.linkedinPost }}"
+        },
+        "id": "post-to-linkedin-1",
+        "name": "Post to LinkedIn",
+        "type": "n8n-nodes-base.linkedIn",
+        "typeVersion": 1,
+        "position": [
+          1120,
+          440
+        ]
+      },
+      {
+        "parameters": {
+          "resource": "tweet",
+          "operation": "create",
+          "text": "={{ $json.twitterPost }}"
+        },
+        "id": "post-to-twitter-1",
+        "name": "Post to Twitter",
+        "type": "n8n-nodes-base.twitter",
+        "typeVersion": 2,
+        "position": [
+          1120,
+          560
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "",
+            "mode": "url"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "Posts",
+            "mode": "list"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Timestamp": "={{ $json.approvedAt }}",
+              "Platform": "LinkedIn & Twitter",
+              "LinkedIn Post": "={{ $json.linkedinPost }}",
+              "Twitter Post": "={{ $json.twitterPost }}",
+              "GitHub Links": "={{ $json.githubLinks.join(', ') }}",
+              "Hashtags": "={{ $json.hashtags.join(', ') }}",
+              "Status": "Published"
+            }
+          },
+          "options": {}
+        },
+        "id": "update-google-sheets-1",
+        "name": "Log to Google Sheets",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          1340,
+          500
+        ],
+        "notesInFlow": true,
+        "notes": "Add your Google Sheet URL in documentId"
+      },
+      {
+        "parameters": {
+          "resource": "message",
+          "operation": "sendMessage",
+          "chatId": "={{ $json.chatId }}",
+          "text": "={{ `✅ Posts Published Successfully!\\n\\n✓ LinkedIn: Posted\\n✓ Twitter: Posted\\n✓ Google Sheets: Updated\\n\\nTimestamp: ${$json.approvedAt}` }}"
+        },
+        "id": "send-success-notification-1",
+        "name": "Send Success Notification",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1560,
+          500
+        ]
+      },
+      {
+        "parameters": {
+          "resource": "message",
+          "operation": "sendMessage",
+          "chatId": "={{ $json.chatId }}",
+          "text": "❌ Post creation cancelled. Send a new message to create another post."
+        },
+        "id": "send-rejection-notification-1",
+        "name": "Send Rejection Notification",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          900,
+          700
+        ]
+      }
+    ],
+    "connections": {
+      "Telegram Trigger": {
+        "main": [
+          [
+            {
+              "node": "Extract Message Content",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Extract Message Content": {
+        "main": [
+          [
+            {
+              "node": "AI Content Generator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Content Generator",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "MCP GitHub Tool": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Content Generator",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Content Generator": {
+        "main": [
+          [
+            {
+              "node": "Parse AI Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse AI Response": {
+        "main": [
+          [
+            {
+              "node": "Send for Review",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait for Approval": {
+        "main": [
+          [
+            {
+              "node": "Check Approval",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Approval": {
+        "main": [
+          [
+            {
+              "node": "Route Decision",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Decision": {
+        "main": [
+          [
+            {
+              "node": "Get Pending Post Data",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Send Rejection Notification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Pending Post Data": {
+        "main": [
+          [
+            {
+              "node": "Post to LinkedIn",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Post to Twitter",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Post to LinkedIn": {
+        "main": [
+          [
+            {
+              "node": "Log to Google Sheets",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Post to Twitter": {
+        "main": [
+          [
+            {
+              "node": "Log to Google Sheets",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log to Google Sheets": {
+        "main": [
+          [
+            {
+              "node": "Send Success Notification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "pinData": {},
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
